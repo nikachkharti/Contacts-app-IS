@@ -10,6 +10,7 @@ namespace Contacts_app_IdentityServer.API
 
             builder.AddControllers();
             builder.AddSwagger();
+            builder.AddSerilog();
 
             var app = builder.Build();
 
