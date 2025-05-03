@@ -1,4 +1,6 @@
-﻿using Microsoft.OpenApi.Models;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using Serilog;
 using System.Reflection;
 
@@ -15,6 +17,33 @@ namespace Contacts_app_IdentityServer.API.Extensions
         {
             builder.Services.AddSwaggerGen(options =>
             {
+                options.AddSecurityDefinition(name: JwtBearerDefaults.AuthenticationScheme, securityScheme: new OpenApiSecurityScheme()
+                {
+                    Name = "Authorization",
+                    Description = "Enter the Bearer Authorization string as following: `Bearer` Generated-JWT-Token",
+                    In = ParameterLocation.Header,
+                    Type = SecuritySchemeType.ApiKey,
+                    Scheme = JwtBearerDefaults.AuthenticationScheme
+                });
+
+                options.AddSecurityRequirement(
+                    new OpenApiSecurityRequirement()
+                    {
+                        {
+                            new OpenApiSecurityScheme()
+                            {
+                                Reference = new OpenApiReference()
+                                {
+                                    Type = ReferenceType.SecurityScheme,
+                                    Id = JwtBearerDefaults.AuthenticationScheme
+                                }
+                            },
+                            new string[]{}
+                        }
+                    }
+                );
+
+
                 #region XML documentation
                 var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
                 var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
@@ -36,5 +65,25 @@ namespace Contacts_app_IdentityServer.API.Extensions
             });
         }
 
+        public static void AddAuthentication(this WebApplicationBuilder builder)
+        {
+            builder.Services.AddAuthentication("Bearer")
+              .AddJwtBearer("Bearer", options =>
+              {
+                  options.Authority = builder.Configuration["Jwt:Authority"];
+                  options.RequireHttpsMetadata = false;
+
+                  var validAudiences = builder.Configuration.GetSection("Jwt:Audience").Get<string[]>();
+                  options.TokenValidationParameters = new TokenValidationParameters
+                  {
+                      ValidAudiences = validAudiences
+                  };
+              });
+        }
+
+        public static void AddAuthorization(this WebApplicationBuilder builder)
+        {
+            builder.Services.AddAuthorization();
+        }
     }
 }
