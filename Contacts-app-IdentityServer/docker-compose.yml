@@ -1,15 +1,4 @@
-services:
-  mongo-db:
-    image: mongo:latest
-    container_name: mongo-db
-    restart: always
-    ports:
-      - 27019:27017
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: admin
-    volumes:
-      - mongo_data:/data/db
+﻿services:
 
   seq:
     image: datalust/seq
@@ -19,5 +8,45 @@ services:
     ports:
       - "5341:80"
 
+  contacts_postgres:
+    image: postgres:15
+    command: postgres -c 'max_connections=200'
+    volumes:
+      - contacts_pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: contacts_identity_db  # 👈 The name of the database to create
+      POSTGRES_USER: admin    # 👈 The username for DB access
+      POSTGRES_PASSWORD: admin  # 👈 The password for DB access
+    healthcheck:
+      test: "exit 0"
+    ports:
+      - "5432:5432"  # 👈 Exposes PostgreSQL on default port 5432 (needed for pgAdmin access)
+    networks:
+      - contacts_identity_network
+
+  contacts_identity_server:
+    image: quay.io/keycloak/keycloak:24.0.3
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: contacts_postgres  # 👈 Hostname of the DB service inside the network
+      KC_DB_URL_DATABASE: contacts_identity_db  # 👈 Matches the name of the created DB
+      KC_DB_USERNAME: admin  # 👈 Matches the DB username
+      KC_DB_PASSWORD: admin  # 👈 Matches the DB password
+      KC_DB_SCHEMA: public  # Tells Keycloak to use the default public schema
+      KEYCLOAK_ADMIN: admin  # Creates a Keycloak admin user with this name
+      KEYCLOAK_ADMIN_PASSWORD: admin  # Password for the Keycloak admin user
+    ports:
+      - "8080:8080"
+    depends_on:
+      contacts_postgres:
+        condition: service_healthy  # Waits for the DB to be healthy before starting
+    networks:
+      - contacts_identity_network  # Joins the same network as the DB
+
 volumes:
-  mongo_data:
+  contacts_pgdata:  # Defines a named volume to persist database files
+
+networks:
+  contacts_identity_network:
+    driver: bridge  # Creates a bridge network so services can talk to each other

@@ -1,0 +1,349 @@
+﻿-I am having postgre database on a localhost executed in docker, also I have keycloack identity provider, 
+I want step by step tutorial how to implement ContactsIdentityServer that will secure ContactsApp web api application 
+on asp.net core web api
+
+
+-To implement a ContactsIdentityServer that secures a ContactsApp ASP.NET Core Web API using Keycloak as the identity provider and PostgreSQL in Docker as the database, follow this step-by-step guide.
+
+✅ Goal Overview
+Keycloak as the Identity Provider (IdP)
+
+ContactsIdentityServer: .NET Core project that integrates with Keycloak (as an external OpenID Connect provider)
+
+ContactsApp Web API: ASP.NET Core Web API secured with tokens from Keycloak
+
+PostgreSQL in Docker: Used by either ContactsApp or Keycloak (or both)
+
+
+
+🧱 Step 1: Set up Docker for PostgreSQL
+Create a Docker container for PostgreSQL.
+
+docker run --name contacts_postgres -e POSTGRES_USER=contactsuser \
+-e POSTGRES_PASSWORD=contactspass -e POSTGRES_DB=contactsdb \
+-p 5432:5432 -d postgres
+
+🧱 Step 2: Run Keycloak with Docker
+
+
+
+docker run -d --name keycloak -p 8080:8080 \
+-e KEYCLOAK_ADMIN=admin \
+-e KEYCLOAK_ADMIN_PASSWORD=admin \
+quay.io/keycloak/keycloak:24.0.1 \
+start-dev
+
+Access Keycloak: http://localhost:8080
+
+🧱 Step 3: Configure Keycloak
+A. Create a Realm
+Log in → Realms → Create Realm
+
+Name: ContactsRealm
+
+B. Create a Client (for ContactsApp)
+Clients → Create Client
+
+Client ID: contacts-api
+
+Client Type: OpenID Connect
+
+Root URL: leave empty
+
+After creating:
+
+Access Type: confidential
+
+Client Authentication: ON
+
+Valid Redirect URIs: *
+
+Save and get the Client Secret from the "Credentials" tab
+
+C. Create a User
+Users → Add User
+
+Username: testuser
+
+Enable → Yes
+
+Credentials → Set Password → testpass → Temporary: OF
+
+
+
+
+
+🧱 Step 4: Create ASP.NET Core ContactsApp (Web API)
+
+
+
+dotnet new webapi -n ContactsApp
+cd ContactsApp
+Install JWT Bearer package:
+
+
+
+
+dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
+In appsettings.json, add:
+json
+
+
+"Jwt": {
+  "Authority": "http://localhost:8080/realms/ContactsRealm",
+  "Audience": "contacts-api"
+}
+In Program.cs or Startup.cs:
+csharp
+
+
+builder.Services.AddAuthentication("Bearer")
+    .AddJwtBearer("Bearer", options =>
+    {
+        options.Authority = builder.Configuration["Jwt:Authority"];
+        options.Audience = builder.Configuration["Jwt:Audience"];
+        options.RequireHttpsMetadata = false;
+    });
+
+builder.Services.AddAuthorization();
+
+var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
+Protect an API endpoint:
+csharp
+
+
+[Authorize]
+[ApiController]
+[Route("[controller]")]
+public class ContactsController : ControllerBase
+{
+    [HttpGet]
+    public IActionResult GetContacts()
+    {
+        return Ok(new[] { "Alice", "Bob", "Charlie" });
+    }
+}
+
+
+
+
+🧱 Step 5: Test Token with Keycloak
+Use Postman or curl to get a token:
+
+
+
+
+curl --location 'http://localhost:8080/realms/ContactsRealm/protocol/openid-connect/token' \
+--header 'Content-Type: application/x-www-form-urlencoded' \
+--data-urlencode 'client_id=contacts-api' \
+--data-urlencode 'client_secret=<<CLIENT_SECRET>>' \
+--data-urlencode 'grant_type=password' \
+--data-urlencode 'username=testuser' \
+--data-urlencode 'password=testpass'
+ the token and call the protected Contacts API:
+
+
+
+
+curl -H "Authorization: Bearer <access_token>" http://localhost:5000/contacts
+
+
+
+-I get invalid grant type because it's not a password
+
+
+Thanks for the update — you're right. If you get invalid_grant, especially with "password" grant type, it's usually because the Client in Keycloak isn't configured to allow it.
+
+✅ Fix: Enable Direct Access Grants in Keycloak
+To use grant_type=password (Resource Owner Password Credentials), you must enable Direct Access Grants in the Keycloak client settings.
+
+🛠️ Here's how to fix it:
+Go to Keycloak Admin Console → your realm (ContactsRealm)
+
+Navigate to Clients → click on contacts-api
+
+In the Settings tab:
+
+Make sure Client Authentication is enabled (for confidential client)
+
+Scroll down and enable ✅ Direct Access Grants Enabled
+
+Click Save
+
+Now the password grant will work.
+
+🔁 Retry your curl request:
+
+
+
+curl --location 'http://localhost:8080/realms/ContactsRealm/protocol/openid-connect/token' \
+--header 'Content-Type: application/x-www-form-urlencoded' \
+--data-urlencode 'client_id=contacts-api' \
+--data-urlencode 'client_secret=<<CLIENT_SECRET>>' \
+--data-urlencode 'grant_type=password' \
+--data-urlencode 'username=testuser' \
+--data-urlencode 'password=testpass'
+If you still get issues:
+
+Make sure your client secret is correct
+
+Double-check the username and password
+
+Ensure the user is enabled and password is set properly
+
+Would you like to use another grant type instead (like authorization code) for production-like flows with login UI?
+
+
+
+
+
+-which username and password should I use?
+
+
+✅ The username and password you should use are from the user account you created in Keycloak — not the admin account.
+👤 Example:
+When you created a user in ContactsRealm, you probably did something like:
+
+Go to Keycloak Admin Console
+
+Navigate to Users → Add User
+
+Username: testuser
+
+After creating the user, go to Credentials tab:
+
+Set Password: testpass
+
+Turn off "Temporary" (set to OFF)
+
+Click Set Password
+
+🔐 So in your curl or Postman request:
+
+
+
+--data-urlencode 'username=testuser'
+--data-urlencode 'password=testpass'
+Not the Keycloak admin username (admin) or password.
+
+Would you like me to show the full sequence of steps to create a user with password in the Keycloak UI, just to be sure it's done right?
+
+
+
+
+
+-Now I get token but audience is invalid
+
+
+You're very close now — you're getting a token, which is great! The next issue is with the audience (aud) claim in the token not matching what your ASP.NET Core API is expecting.
+
+🎯 Problem
+The API expects a specific aud (audience) claim — typically contacts-api — but the token you're receiving from Keycloak either:
+
+Has no aud claim
+
+Or has a different aud (like the realm name or account service)
+
+✅ Solution: Configure aud claim properly in Keycloak
+🔧 Step 1: Add a Client Audience Mapper
+Go to Keycloak Admin Console
+
+Select your realm: ContactsRealm
+
+Go to Clients → contacts-api
+
+Go to the Client Scopes tab → if there's no default scope selected, add roles
+
+Go to the Mappers tab
+
+Click Create
+
+Fill in:
+
+Name: audience
+
+Mapper Type: Audience
+
+Included Client Audience: contacts-api
+
+Add to ID token: ✅
+
+Add to access token: ✅
+
+Click Save
+
+🔁 Step 2: Confirm Access Token Contains aud: contacts-api
+Use a tool like jwt.io or decode the JWT to confirm:
+
+json
+
+
+"aud": "contacts-api"
+⚙️ Step 3: Ensure ASP.NET Core API Matches Audience
+Your Program.cs or Startup.cs should contain:
+
+csharp
+
+
+options.Audience = "contacts-api"; // must match token "aud"
+Also confirm this is in appsettings.json:
+
+json
+
+
+"Jwt": {
+  "Authority": "http://localhost:8080/realms/ContactsRealm",
+  "Audience": "contacts-api"
+}
+Let me know if you'd like help decoding your token to confirm the aud claim, or if you want a complete working sample project.
+
+
+
+
+
+
+
+
+
+-What If I want multiple audiences to be depended on this identity server I have to change this one right?
+
+    "Audience": [
+      "contacts-api"
+    ]
+
+
+    Yes — if you want your Identity Server (Keycloak in this case) to issue tokens for multiple audiences (i.e., multiple APIs), you are absolutely right: you’ll need to update your ASP.NET Core API to accept multiple valid audiences.
+
+✅ How to Accept Multiple Audiences in ASP.NET Core
+🔧 Change your configuration:
+In your appsettings.json:
+
+json
+
+
+"Jwt": {
+  "Authority": "http://localhost:8080/realms/ContactsRealm",
+  "Audience": [ "contacts-api", "orders-api", "products-api" ]
+}
+Then in your Program.cs or Startup.cs, modify the JWT config:
+
+✅ ASP.NET Core 6+ (Minimal hosting model):
+csharp
+
+
+builder.Services.AddAuthentication("Bearer")
+    .AddJwtBearer("Bearer", options =>
+    {
+        options.Authority = builder.Configuration["Jwt:Authority"];
+        options.RequireHttpsMetadata = false;
+
+        var validAudiences = builder.Configuration.GetSection("Jwt:Audience").Get<string[]>();
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidAudiences = validAudiences
+        };
+    });
+

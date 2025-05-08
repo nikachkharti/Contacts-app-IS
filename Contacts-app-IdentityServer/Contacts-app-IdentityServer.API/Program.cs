@@ -11,12 +11,14 @@ namespace Contacts_app_IdentityServer.API
             builder.AddControllers();
             builder.AddSwagger();
             builder.AddSerilog();
+            builder.AddServices();
 
             var app = builder.Build();
 
             app.UseSwagger();
             app.UseSwaggerUI();
             app.UseHttpsRedirection();
+            app.UseAuthentication();
             app.UseAuthorization();
             app.MapControllers();
             app.Run();
