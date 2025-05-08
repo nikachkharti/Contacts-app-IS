@@ -11,8 +11,7 @@ namespace Contacts_app_IdentityServer.API
             builder.AddControllers();
             builder.AddSwagger();
             builder.AddSerilog();
-            builder.AddAuthentication();
-            builder.AddAuthorization();
+            builder.AddServices();
 
             var app = builder.Build();
 
